@@ -1,0 +1,279 @@
+# Default actions shipped with android-toolbox.
+#
+# This file is copied to <config>/actions.yaml on first run and is freely
+# extensible from then on. Each action has the following fields:
+#
+#   id          unique, stable identifier (no spaces)
+#   name        display name in the TUI
+#   description short description
+#   category    grouping in the action list
+#   tool        adb | scrcpy | shell
+#   command     the command to run (see below)
+#   params      optional list of {name,label,default} placeholders
+#   confirm     true = ask for confirmation before running (for destructive actions)
+#   interactive true = a real terminal handover (e.g. an open shell)
+#   format      optional: highlights the output in the TUI instead of showing
+#               it raw - logcat (color by log level), keyvalue (bold
+#               "Label:" before each value, e.g. dumpsys output), or
+#               packages (hides the "package:" prefix from
+#               "pm list packages", highlights the package name).
+#               Empty = unchanged.
+#   live_preview true = runs automatically as soon as it's highlighted in the
+#               list and shows live in the right-hand pane, without pressing
+#               enter (e.g. battery status, device info). Only intended for
+#               fast, side-effect-free read actions - ignored once params,
+#               confirm, or interactive is set, or the tool is scrcpy (see
+#               Action.LivePreviewEligible in internal/actions/schema.go).
+#
+# Placeholders in command: {serial} (current device) and {paramName} for
+# each value declared in params[].
+#
+# tool: adb    -> command is the arguments after "adb -s <serial> ..."
+#                 (shell-word-split with quote support, e.g. for pipes:
+#                 shell "dumpsys x | grep y"). Placeholders that may contain
+#                 spaces/special characters (paths!) should be quoted, e.g.
+#                 "{path}".
+# tool: scrcpy -> command is additional arguments after the scrcpy defaults
+# tool: shell  -> command runs via the system shell (cmd /C on Windows,
+#                 sh -c elsewhere). The placeholders {adb} and {scrcpy} are
+#                 replaced with the (quoted) paths of the tool binaries
+#                 currently in use.
+#
+# name/description/category for these built-in actions are in English - the
+# German translation lives in internal/app/action_translations.go and is
+# only applied at render time, never written back into this file. This
+# only applies to these default actions: anything you add yourself or
+# generate via AI always displays exactly as you wrote it.
+
+- id: logcat-snapshot
+  name: "View Logs (Snapshot)"
+  description: "Shows the last 500 logcat lines from the device"
+  category: Logs
+  tool: adb
+  command: 'logcat -d -t 500'
+  format: logcat
+
+- id: logcat-live
+  name: "Follow Logs Live"
+  description: "Streams logcat live until stopped with Ctrl+C"
+  category: Logs
+  tool: adb
+  command: 'logcat -v time'
+  format: logcat
+
+- id: logcat-clear
+  name: "Clear Log Buffer"
+  description: "Clears the device's logcat buffer"
+  category: Logs
+  tool: adb
+  command: 'logcat -c'
+  confirm: true
+
+- id: shell-open
+  name: "Interactive Shell"
+  description: "Opens an interactive adb shell on the device"
+  category: Shell
+  tool: adb
+  command: 'shell'
+  interactive: true
+
+- id: shell-dumpsys-battery
+  name: "Battery Status (dumpsys)"
+  description: "Shows detailed battery status"
+  category: Shell
+  tool: adb
+  command: 'shell dumpsys battery'
+  format: keyvalue
+  live_preview: true
+
+- id: shell-dumpsys-notifications
+  name: "Active Notifications"
+  description: "Shows active notifications via dumpsys"
+  category: Shell
+  tool: adb
+  command: 'shell "dumpsys notification --noredact"'
+
+- id: file-pull
+  name: "Pull File from Device"
+  description: "Copies a file from the device to this PC"
+  category: Files
+  tool: adb
+  command: 'pull "{remote_path}" "{local_path}"'
+  params:
+    - name: remote_path
+      label: "Path on the device"
+      default: "/sdcard/Download/"
+    - name: local_path
+      label: "Destination folder on this PC"
+      default: "."
+
+- id: file-push
+  name: "Push File to Device"
+  description: "Copies a file from this PC to the device"
+  category: Files
+  tool: adb
+  command: 'push "{local_path}" "{remote_path}"'
+  params:
+    - name: local_path
+      label: "File on this PC"
+      default: "."
+    - name: remote_path
+      label: "Destination path on the device"
+      default: "/sdcard/Download/"
+
+- id: screenshot
+  name: "Take Screenshot"
+  description: "Captures a screenshot and saves it locally"
+  category: Files
+  tool: shell
+  command: '{adb} -s {serial} shell screencap -p /sdcard/atbx_screenshot.png && {adb} -s {serial} pull /sdcard/atbx_screenshot.png ./screenshot_{serial}.png && {adb} -s {serial} shell rm /sdcard/atbx_screenshot.png'
+
+- id: screenrecord-start
+  name: "Record Screen (30s)"
+  description: "Records the screen for 30 seconds and pulls the file afterward"
+  category: Files
+  tool: shell
+  command: '{adb} -s {serial} shell screenrecord --time-limit 30 /sdcard/atbx_record.mp4 && {adb} -s {serial} pull /sdcard/atbx_record.mp4 ./record_{serial}.mp4 && {adb} -s {serial} shell rm /sdcard/atbx_record.mp4'
+
+- id: apps-list
+  name: "List Installed Packages"
+  description: "Lists all installed app packages"
+  category: Apps
+  tool: adb
+  command: 'shell pm list packages -3'
+  format: packages
+
+- id: apps-install
+  name: "Install APK"
+  description: "Installs a local APK file on the device"
+  category: Apps
+  tool: adb
+  command: 'install -r "{apk_path}"'
+  params:
+    - name: apk_path
+      label: "Path to the APK file"
+      default: ""
+
+- id: apps-uninstall
+  name: "Uninstall App"
+  description: "Uninstalls a package from the device"
+  category: Apps
+  tool: adb
+  command: 'uninstall {package}'
+  params:
+    - name: package
+      label: "Package name"
+      default: ""
+  confirm: true
+
+- id: apps-clear-data
+  name: "Clear App Data"
+  description: "Resets an app to its factory state"
+  category: Apps
+  tool: adb
+  command: 'shell pm clear {package}'
+  params:
+    - name: package
+      label: "Package name"
+      default: ""
+  confirm: true
+
+- id: device-info
+  name: "Device Information"
+  description: "Model, Android version, SDK, and build info"
+  category: Device
+  tool: adb
+  command: 'shell "echo Model: $(getprop ro.product.model); echo Manufacturer: $(getprop ro.product.manufacturer); echo Android: $(getprop ro.build.version.release); echo SDK: $(getprop ro.build.version.sdk)"'
+  format: keyvalue
+  live_preview: true
+
+- id: device-reboot
+  name: "Reboot"
+  description: "Restarts the device normally"
+  category: Device
+  tool: adb
+  command: 'reboot'
+  confirm: true
+
+- id: device-reboot-recovery
+  name: "Reboot to Recovery"
+  description: "Restarts the device into recovery mode"
+  category: Device
+  tool: adb
+  command: 'reboot recovery'
+  confirm: true
+
+- id: device-reboot-bootloader
+  name: "Reboot to Bootloader"
+  description: "Restarts the device into bootloader/fastboot mode"
+  category: Device
+  tool: adb
+  command: 'reboot bootloader'
+  confirm: true
+
+- id: wifi-adb-enable
+  name: "Enable Wi-Fi ADB"
+  description: "Switches adb to TCP/IP (port 5555) for a wireless connection"
+  category: Network
+  tool: adb
+  command: 'tcpip 5555'
+
+- id: wifi-adb-connect
+  name: "Connect over Wi-Fi"
+  description: "Connects to a device via its IP address"
+  category: Network
+  tool: adb
+  command: 'connect {ip}:5555'
+  params:
+    - name: ip
+      label: "Device IP address"
+      default: ""
+
+- id: port-forward
+  name: "Set Up Port Forwarding"
+  description: "Forwards a local port to a port on the device"
+  category: Network
+  tool: adb
+  command: 'forward tcp:{local_port} tcp:{remote_port}'
+  params:
+    - name: local_port
+      label: "Local port"
+      default: "8080"
+    - name: remote_port
+      label: "Port on the device"
+      default: "8080"
+
+- id: scrcpy-display
+  name: "Mirror Display (Default)"
+  description: "Opens scrcpy with its default settings"
+  category: Display
+  tool: scrcpy
+  command: ''
+
+- id: scrcpy-no-audio
+  name: "Mirror Display (No Audio)"
+  description: "Mirrors the display without audio forwarding"
+  category: Display
+  tool: scrcpy
+  command: '--no-audio'
+
+- id: scrcpy-audio-only
+  name: "Forward Audio Only"
+  description: "Forwards only the device's audio, without video"
+  category: Display
+  tool: scrcpy
+  command: '--no-video --no-control'
+
+- id: scrcpy-record
+  name: "Mirror and Record Display"
+  description: "Mirrors the display and records the session as an mp4"
+  category: Display
+  tool: scrcpy
+  command: '--record=./scrcpy_record_{serial}.mp4'
+
+- id: scrcpy-otg
+  name: "OTG Mode (Mouse/Keyboard Only)"
+  description: "Uses the device as a pure USB HID target, without mirroring"
+  category: Display
+  tool: scrcpy
+  command: '--otg'

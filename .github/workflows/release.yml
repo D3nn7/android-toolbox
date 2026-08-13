@@ -1,0 +1,205 @@
+name: Release
+
+# Fires on every push to main. The version-bump commit this workflow
+# pushes back to main (see bump-version below) is made with the default
+# GITHUB_TOKEN, whose pushes never trigger further workflow runs - so this
+# does not recurse.
+on:
+  push:
+    branches:
+      - main
+
+# contents: write is needed to push the version-bump commit/tag and to
+# create the GitHub release with attached binaries.
+permissions:
+  contents: write
+
+# Never run two releases at once - a second push landing mid-release could
+# otherwise race the version bump.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  # Full test gate: nothing below this job runs unless build/vet/test all
+  # pass, so a broken main can never produce a release.
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Verify formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build ./...
+
+      - name: Test
+        run: go test ./...
+
+  # Determines the next semantic version from Conventional-Commits-style
+  # messages since the last release tag, bumps the central VERSION file,
+  # and commits + tags that as the new release point.
+  bump-version:
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+      tag: ${{ steps.bump.outputs.tag }}
+      sha: ${{ steps.bump.outputs.sha }}
+      released: ${{ steps.bump.outputs.released }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Determine next semantic version
+        id: bump
+        run: |
+          set -euo pipefail
+
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$LATEST_TAG" ]; then
+            RANGE="HEAD"
+          else
+            RANGE="${LATEST_TAG}..HEAD"
+          fi
+
+          COMMITS=$(git log --pretty=format:%s $RANGE)
+          if [ -z "$COMMITS" ]; then
+            echo "No new commits since ${LATEST_TAG:-the beginning} - nothing to release."
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Conventional Commits (https://www.conventionalcommits.org/):
+          # "feat!:"/"fix!:"/a "BREAKING CHANGE" footer -> major,
+          # "feat:" -> minor, everything else (including "fix:") -> patch.
+          BUMP="patch"
+          if echo "$COMMITS" | grep -qE '^[a-zA-Z]+(\([^)]*\))?!:' || git log --pretty=format:%B "$RANGE" | grep -q 'BREAKING CHANGE'; then
+            BUMP="major"
+          elif echo "$COMMITS" | grep -qE '^feat(\([^)]*\))?:'; then
+            BUMP="minor"
+          fi
+
+          CURRENT=$(tr -d '[:space:]' < VERSION)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "$BUMP" in
+            major) MAJOR=$((MAJOR + 1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR + 1)); PATCH=0 ;;
+            patch) PATCH=$((PATCH + 1)) ;;
+          esac
+          NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+          echo "Bumping $CURRENT -> $NEW_VERSION ($BUMP bump, based on commits since ${LATEST_TAG:-the beginning})"
+          echo "$NEW_VERSION" > VERSION
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION
+          git commit -m "chore(release): bump version to $NEW_VERSION [skip ci]"
+          git tag "v$NEW_VERSION"
+          git push origin HEAD:main
+          git push origin "v$NEW_VERSION"
+
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "released=true" >> "$GITHUB_OUTPUT"
+
+  # Cross-compiles from a single Linux runner (the project has no cgo
+  # dependencies) for every platform the tool targets.
+  build:
+    needs: bump-version
+    if: needs.bump-version.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: windows
+            goarch: amd64
+            ext: .exe
+            archive: zip
+          - goos: linux
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: darwin
+            goarch: amd64
+            ext: ""
+            archive: tar.gz
+          - goos: darwin
+            goarch: arm64
+            ext: ""
+            archive: tar.gz
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump-version.outputs.tag }}
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 0
+        run: |
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags "-s -w -X android-toolbox/internal/buildinfo.Version=${{ needs.bump-version.outputs.version }} -X android-toolbox/internal/buildinfo.Commit=${{ needs.bump-version.outputs.sha }}" \
+            -o "dist/android-toolbox${{ matrix.ext }}" \
+            ./cmd/android-toolbox
+
+      - name: Package archive
+        run: |
+          NAME="android-toolbox_${{ needs.bump-version.outputs.tag }}_${{ matrix.goos }}_${{ matrix.goarch }}"
+          cd dist
+          if [ "${{ matrix.archive }}" = "zip" ]; then
+            zip "../$NAME.zip" "android-toolbox${{ matrix.ext }}"
+          else
+            tar -czf "../$NAME.tar.gz" "android-toolbox${{ matrix.ext }}"
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-asset-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: |
+            android-toolbox_*.zip
+            android-toolbox_*.tar.gz
+          if-no-files-found: error
+
+  release:
+    needs: [bump-version, build]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-asset-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "${{ needs.bump-version.outputs.tag }}" \
+            artifacts/* \
+            --title "${{ needs.bump-version.outputs.tag }}" \
+            --generate-notes

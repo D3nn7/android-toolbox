@@ -1,0 +1,32 @@
+# Build artifacts
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go
+*.test
+*.out
+vendor/
+
+# Local tool cache (downloaded adb/scrcpy) - never checked in
+/tools/
+/.tools-cache/
+
+# Local scratch build tmpdir (see GOTMPDIR workaround in dev notes)
+/.gotmp/
+
+# IDE
+.idea/
+.vscode/
+.claude/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs / local state
+*.log
