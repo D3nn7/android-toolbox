@@ -5,6 +5,8 @@ package install
 import (
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -68,6 +70,100 @@ func TestInstallReportsNotOnPath(t *testing.T) {
 	}
 	if res.Note == "" {
 		t.Error("expected a follow-up note explaining how to add installDir to PATH")
+	}
+}
+
+func TestInstallAppendsToShellRC(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // deliberately does not include installDir
+	t.Setenv("SHELL", "/bin/zsh")
+
+	exeDir := t.TempDir()
+	exePath := filepath.Join(exeDir, "android-toolbox")
+	if err := os.WriteFile(exePath, []byte("fake binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile returned an error: %v", err)
+	}
+
+	installDir := filepath.Join(home, ".local", "bin")
+
+	res, err := Install(exePath, "android-toolbox", "atbx")
+	if err != nil {
+		t.Fatalf("Install returned an error: %v", err)
+	}
+	if res.OnPath {
+		t.Error("expected OnPath to be false - the change only lands in the rc file, not the current process' env")
+	}
+
+	rcFile := filepath.Join(home, ".zshrc")
+	data, err := os.ReadFile(rcFile)
+	if err != nil {
+		t.Fatalf("expected %s to have been created: %v", rcFile, err)
+	}
+	if !strings.Contains(string(data), installDir) {
+		t.Errorf("expected %s to reference %s, got:\n%s", rcFile, installDir, data)
+	}
+	if !strings.Contains(res.Note, rcFile) {
+		t.Errorf("expected Note to mention %s, got %q", rcFile, res.Note)
+	}
+}
+
+func TestInstallDoesNotDuplicateShellRCEntry(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir())
+	t.Setenv("SHELL", "/bin/zsh")
+
+	exeDir := t.TempDir()
+	exePath := filepath.Join(exeDir, "android-toolbox")
+	if err := os.WriteFile(exePath, []byte("fake binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile returned an error: %v", err)
+	}
+
+	if _, err := Install(exePath, "android-toolbox", "atbx"); err != nil {
+		t.Fatalf("first Install returned an error: %v", err)
+	}
+	if _, err := Install(exePath, "android-toolbox", "atbx"); err != nil {
+		t.Fatalf("second Install returned an error: %v", err)
+	}
+
+	rcFile := filepath.Join(home, ".zshrc")
+	data, err := os.ReadFile(rcFile)
+	if err != nil {
+		t.Fatalf("expected %s to exist: %v", rcFile, err)
+	}
+	installDir := filepath.Join(home, ".local", "bin")
+	if count := strings.Count(string(data), installDir); count != 1 {
+		t.Errorf("expected exactly one PATH entry for %s after two installs, found %d in:\n%s", installDir, count, data)
+	}
+}
+
+func TestShellRCFilePicksVariantByShell(t *testing.T) {
+	home := string(filepath.Separator) + "home-fixture"
+	installDir := filepath.Join(home, ".local", "bin")
+
+	wantBashFile := filepath.Join(home, ".bashrc")
+	if runtime.GOOS == "darwin" {
+		wantBashFile = filepath.Join(home, ".bash_profile")
+	}
+
+	cases := []struct {
+		shell    string
+		wantFile string
+	}{
+		{"/bin/zsh", filepath.Join(home, ".zshrc")},
+		{"/bin/bash", wantBashFile},
+		{"/usr/bin/fish", filepath.Join(home, ".config", "fish", "config.fish")},
+	}
+	for _, c := range cases {
+		t.Setenv("SHELL", c.shell)
+		gotFile, gotLine := shellRCFile(home, installDir)
+		if gotFile != c.wantFile {
+			t.Errorf("shellRCFile(SHELL=%q) file = %q, want %q", c.shell, gotFile, c.wantFile)
+		}
+		if !strings.Contains(gotLine, installDir) {
+			t.Errorf("shellRCFile(SHELL=%q) export line %q does not reference %q", c.shell, gotLine, installDir)
+		}
 	}
 }
 

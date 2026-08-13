@@ -1,18 +1,23 @@
 # android-toolbox
 
-An extensible CLI/TUI toolbox for controlling connected Android devices on
-Windows (Linux/macOS are already supported by the code, but not yet
-extensively tested). Bundles adb and scrcpy behind an interactive console,
-with configuration-driven actions and an AI mode for generating new actions.
+[atbx.schape.it](https://atbx.schape.it)
 
-> **Built with AI assistance.** Large parts of this project - including
-> most of its Go code, its default actions, and the AI prompt that
-> generates new ones - were written with heavy help from an AI coding
-> assistant. That means the usual caveats apply: review anything before you
-> rely on it, especially destructive actions (`confirm: true` entries,
-> `dangerous-reset`, AI-generated commands) and anything touching a device
-> or data you care about. It works well in practice, but "AI-authored"
-> is not the same as "bug-free" or "battle-tested."
+An extensible CLI/TUI toolbox for controlling connected Android devices on
+Windows, Linux, and macOS. Device interaction goes through pluggable device
+tools, actions are configuration-driven (no code required to add one), the
+UI supports multiple languages, and an AI mode can generate new actions from
+a plain-text description via a pluggable AI provider - each of these is
+built to grow beyond what's currently implemented:
+
+- **Device tools**: `adb`, `scrcpy`
+- **AI provider**: Claude Code CLI
+- **UI languages**: English, German
+
+> **Built with AI assistance.** This project was developed with
+> significant help from AI tools. The usual caveats apply: review anything
+> before you rely on it, especially destructive actions (`confirm: true`
+> entries, `dangerous-reset`, AI-generated commands) and anything touching
+> a device or data you care about.
 
 ## Features
 
@@ -21,22 +26,34 @@ with configuration-driven actions and an AI mode for generating new actions.
   browse/search, while the right pane's border color reflects its state
   (preview/params/confirm/running/done) - with color-highlighted live
   output.
-- **Portable tools**: `adb` and `scrcpy` are managed by the app itself
+- **Portable tools**: device tools are managed by the app itself
   (downloaded from their official sources, isolated in their own tool
-  cache) - no dependency on a system-wide install.
+  cache) - no dependency on a system-wide install. Currently: `adb` and
+  `scrcpy`.
 - **Configuration-driven actions**: every action (logs, file transfer,
   shell commands, scrcpy variants, ...) lives in an editable `actions.yaml`.
   Adding a new action means a new YAML entry, no code required.
-- **AI mode**: a free-text request → the Claude Code CLI generates a
-  matching action (with a preview/confirmation step before saving).
+- **AI mode**: a free-text request generates a matching action (with a
+  preview/confirmation step before saving), via a pluggable AI provider -
+  see ["Extending AI mode"](#extending-ai-mode). Currently implemented:
+  the Claude Code CLI.
 - **Backup & recover**: every change to `actions.yaml`/`settings.yaml` is
   preceded by an automatic timestamped backup, restorable at any time.
 - **Optional PATH install**: on first run, you're asked whether the command
-  should be made available system-wide (including the short alias `atbx`).
-- **Multilingual UI**: the interface defaults to English and can be
-  switched to German from the Settings screen (`s` in the dashboard). The
-  AI provider/command/timeout can also be adjusted there, along with the
-  resolved tool paths (adb/scrcpy/config directory).
+  should be made available system-wide (including the short alias `atbx`),
+  or left portable (nothing copied, runs only from where you launched it).
+  On Windows this updates the user PATH registry value directly; on
+  Linux/macOS it symlinks into `~/.local/bin` and appends an export line to
+  your shell's rc file (`~/.zshrc`, `~/.bash_profile`/`~/.bashrc`, or
+  fish's `config.fish`, picked from `$SHELL`) if that directory isn't on
+  PATH yet - either way, a newly opened terminal is required for the change
+  to take effect.
+- **Multilingual UI**: built on a translation table so new languages can be
+  added without touching the rest of the app (see `internal/app/i18n.go`).
+  Currently implemented: English (default) and German, switchable from the
+  Settings screen (`s` in the dashboard). The AI provider/command/timeout
+  can also be adjusted there, along with the resolved tool paths
+  (adb/scrcpy/config directory).
 
 ## Installation / first run
 
@@ -56,6 +73,32 @@ On first run:
 4. After that: **choose a tool** (Devices or APK Info) → device
    selection/dashboard, or pick an APK file. `ctrl+t` switches tools at any
    time without restarting the app.
+
+### macOS: "cannot be opened because the developer cannot be verified"
+
+Release binaries are unsigned and not notarized, so macOS Gatekeeper flags
+a downloaded, unpacked `android-toolbox` as coming from an unidentified
+developer (or, on newer macOS versions, refuses to open it at all from
+Finder). This is not a bug in the binary.
+
+Either of these unblocks a downloaded binary (do this once per download):
+
+```bash
+xattr -d com.apple.quarantine ./android-toolbox
+```
+
+or right-click (Control-click) the file in Finder → **Open** → **Open**
+in the confirmation dialog. Downloading via `curl`/`git clone` instead of a
+browser avoids the quarantine flag being set in the first place, since only
+browsers and similar apps apply it.
+
+### Windows: "Windows protected your PC" (SmartScreen)
+
+Release binaries are likewise unsigned, so SmartScreen shows its standard
+unknown-publisher warning on first run - click **More info** → **Run
+anyway**. Resolving that requires a purchased code-signing certificate (a
+standard one still needs downloads to build up reputation before
+SmartScreen trusts it automatically; only an EV certificate skips that).
 
 All configuration files live under the OS's usual user-config directory,
 e.g. on Windows under `%APPDATA%\android-toolbox\`:
