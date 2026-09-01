@@ -85,11 +85,58 @@ branching, wherever the code genuinely differs per platform:
   mangling already-quoted paths.
 - `internal/install/install_windows.go` / `install_unix.go` - PATH
   installation (registry vs symlink + PATH note).
+- `internal/toolsmanager/sdkcmd_windows.go` / `sdkcmd_unix.go` - how
+  cmdline-tools' `sdkmanager`/`avdmanager` scripts are invoked (Windows
+  `.bat` files need `cmd /c`; Unix's are directly executable via their own
+  shebang).
 
 Follow this pattern (a `_windows.go` and a `_unix.go`/`_other.go` pair with
 matching `//go:build` tags and identical exported signatures) for any new
 platform-specific behavior, rather than `runtime.GOOS` branches scattered
 through shared code.
+
+## Emulator manager (AVDs)
+
+`internal/avd` + `internal/toolsmanager/sdk*.go` implement creating/managing
+Android Virtual Devices, on top of Google's `avdmanager`/`sdkmanager`/
+`emulator` binaries (a Java toolchain, resolved separately from - and
+preferred over - a bundled copy if `ANDROID_HOME`/`ANDROID_SDK_ROOT` already
+points at a usable SDK; see `toolsmanager.resolveSdkTool`). Three sourcing
+decisions here are deliberate, not oversights - don't "fix" them without
+re-reading this first:
+
+- **`cmdlineToolsRevision` in `sdksources.go` is a pinned, hand-bumped
+  constant**, not a live version lookup. Google publishes no stable
+  "-latest-" alias for this package (unlike platform-tools) and no
+  GitHub-releases-style API (unlike scrcpy) - the revision is looked up by
+  hand from developer.android.com/studio#command-tools and bumped
+  occasionally, the same staleness tolerance this codebase already accepts
+  for scrcpy's own hardcoded `fallbackScrcpyVersion`.
+- **Everything installed *after* cmdline-tools (system images, platforms,
+  the `emulator` package itself) is always fetched live by shelling out to
+  the bootstrapped `sdkmanager --install`** (see
+  `toolsmanager.InstallSdkPackage`), rather than reimplementing Google's SDK
+  repository XML resolution in Go. Do not add a hardcoded URL/version for
+  any of these - sdkmanager already resolves them correctly and it's the
+  only piece of this that changes often enough to matter.
+- **The emulator binary refuses to start unless its SDK root has a
+  `platform-tools` subdirectory** - checked via `ANDROID_SDK_ROOT`/
+  `ANDROID_HOME` or guessed from its own path otherwise, and fatal
+  ("Cannot find AVD system path") if neither checks out. Since this app
+  manages its own `adb` in a separate directory from the SDK root it
+  bootstraps for the emulator (`toolsmanager.SdkRoot()`), that directory is
+  mirrored into place by `toolsmanager.EnsureEmulatorPlatformTools` before
+  every launch (`internal/avd/launch.go`'s `Launcher` also always exports
+  `ANDROID_SDK_ROOT`/`ANDROID_HOME`) - this was a real, silent-failure bug
+  during development (a "Running... exit status 1" with no other symptom),
+  so don't drop either half of the fix.
+
+`avdmanager list avd` reports two sections: normal AVDs, and ones under "The
+following Android Virtual Devices could not be loaded" (typically a system
+image later removed via `sdkmanager --uninstall` or manually) - `AVD.Broken`
+tracks the latter (see `avd.parseAVDList`), and the TUI/CLI both must keep
+surfacing it distinctly rather than showing a healthy-looking entry with
+silently blank fields, which is what happened before that field existed.
 
 ## Actions schema
 
@@ -108,10 +155,11 @@ cmd/android-toolbox/   Cobra commands; no subcommand -> starts the TUI (internal
 internal/
   config/        Paths, settings, first-run state
   logging/       File logger + panic recovery
-  toolsmanager/  Download/resolution of adb/scrcpy
+  toolsmanager/  Download/resolution of adb/scrcpy/cmdline-tools, sdkmanager wrapper
   adb/           adb client (devices, shell, battery, ...)
   device/        Aggregated device info
   scrcpy/        scrcpy process launch (detached, log-redirected)
+  avd/           AVD lifecycle (list/create/delete), config.ini specs, emulator launch, emulator-console simulation
   actions/       Schema, YAML loader, execution (placeholders, streaming, OS shell)
   output/        Classifies output lines (logcat/keyvalue/packages) for TUI highlighting
   ai/            AI provider interface, registry, Claude CLI implementation, prompt
@@ -133,3 +181,12 @@ for examples). Packages needing a real device or network access
 are lower-coverage by necessity; don't force a mock adb/network layer into
 existence just to chase coverage there - prefer testing the pure logic
 (parsing, path resolution, formatting) directly instead.
+
+`internal/adb/devices_test.go` and `internal/avd/avd_test.go` both favor
+verbatim captures of real `adb devices -l`/`avdmanager list avd` output as
+test fixtures over hand-written approximations - real tool output has
+already surfaced parsing bugs synthetic fixtures didn't (e.g. `AVD.Broken`:
+`avdmanager` reports AVDs with a since-deleted system image under a
+completely separate "could not be loaded" section, with none of the normal
+Device/Target/Tag-ABI fields). Prefer a real capture over a hand-rolled one
+when adding a test against either tool's output.

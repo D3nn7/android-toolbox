@@ -260,6 +260,80 @@ type uiText struct {
 	APKInfoCertSHA256Label      string
 	APKInfoSigningV1OnlyLabel   string
 	APKInfoSigningNoneLabel     string
+
+	// Emulator manager (screen_emulatorlist.go, screen_emulatorcreate.go) -
+	// the tool-select entry, the AVD list/detail/simulation screen, and the
+	// create wizard.
+	ToolEmulatorsLabel string
+	ToolEmulatorsDesc  string
+
+	// Shown as a header badge (layout.go) whenever the currently selected
+	// device is a running emulator, so its AVD name is visible without
+	// switching to the Emulators tool.
+	AVDBadgeFmt string
+
+	EmulatorsTitle     string
+	EmulatorsFooter    string
+	EmulatorsNone      string
+	EmulatorNoToolsMsg string
+
+	// Detail panel fields, shared between the emulator list's specs/status
+	// view and the create wizard's form labels.
+	FieldTarget          string
+	FieldDevice          string
+	FieldPath            string
+	FieldStatusRunning   string
+	FieldStatusStopped   string
+	FieldStatusBroken    string
+	FieldName            string
+	FieldSystemImage     string
+	FieldSDCard          string
+	FieldRAM             string
+	FieldHeap            string
+	FieldCPUCores        string
+	FieldStorage         string
+	FieldDensity         string
+	FieldLatitude        string
+	FieldLongitude       string
+	FieldNetworkSpeed    string
+	FieldNetworkDelay    string
+	FieldBatteryPercent  string
+	FieldBatteryCharging string
+	ChargingYes          string
+	ChargingNo           string
+
+	EmulatorSpecsTitle string
+
+	WizardFieldRequiredMsg string
+	WizardFieldNumberMsg   string
+	WizardSearchHint       string
+
+	EmulatorNotRunningMsg        string
+	EmulatorStartFailedNoToolMsg string
+	EmulatorBrokenMsg            string
+	EmulatorAlreadyStartingFmt   string
+	EmulatorBootWaitingFmt       string
+	EmulatorBootedFmt            string
+	EmulatorBootTimeoutFmt       string
+	EmulatorCrashedFmt           string
+	EmulatorExitedEarlyFmt       string
+	EmulatorStoppedFmt           string
+	EmulatorDeletedFmt           string
+	EmulatorDeleteTitleFmt       string
+	EmulatorDeleteYes            string
+	EmulatorDeleteNo             string
+	EmulatorGPSAppliedMsg        string
+	EmulatorNetworkAppliedMsg    string
+	EmulatorBatteryAppliedMsg    string
+	EmulatorSpecsAppliedMsg      string
+
+	EmulatorCreateTitle         string
+	EmulatorCreateDefaultDevice string
+	EmulatorCreateStepFmt       string
+	EmulatorCreateLoadingMsg    string
+	EmulatorCreateCreatingMsg   string
+	EmulatorCreateDoneFmt       string
+	EmulatorCreateFooter        string
 }
 
 var uiTextEN = uiText{
@@ -465,6 +539,72 @@ var uiTextEN = uiText{
 	APKInfoCertSHA256Label:      "SHA-256:",
 	APKInfoSigningV1OnlyLabel:   "v1 (JAR signature) - certificate details not decoded",
 	APKInfoSigningNoneLabel:     "No signature block found (unsigned or unknown format)",
+
+	ToolEmulatorsLabel: "Emulators",
+	ToolEmulatorsDesc:  "Create, manage, and simulate Android Virtual Devices (AVDs)",
+
+	AVDBadgeFmt: "AVD: %s",
+
+	EmulatorsTitle:     "android-toolbox - Emulators",
+	EmulatorsFooter:    "[n] new   [enter] start/stop   [d] delete   [e] edit specs   [g] GPS   [w] network   [b] battery   [esc] back   [ctrl+t] switch tool   [q] quit",
+	EmulatorsNone:      "No AVDs defined yet - press 'n' to create one.",
+	EmulatorNoToolsMsg: "sdkmanager/avdmanager not available - run 'android-toolbox emulator setup'",
+
+	FieldTarget:          "Target:",
+	FieldDevice:          "Device:",
+	FieldPath:            "Path:",
+	FieldStatusRunning:   "Running",
+	FieldStatusStopped:   "Stopped",
+	FieldStatusBroken:    "Broken",
+	FieldName:            "Name:",
+	FieldSystemImage:     "System image:",
+	FieldSDCard:          "SD card (MB):",
+	FieldRAM:             "RAM (MB):",
+	FieldHeap:            "Heap (MB):",
+	FieldCPUCores:        "CPU cores:",
+	FieldStorage:         "Internal storage (MB):",
+	FieldDensity:         "LCD density (dpi):",
+	FieldLatitude:        "Latitude:",
+	FieldLongitude:       "Longitude:",
+	FieldNetworkSpeed:    "Network speed profile:",
+	FieldNetworkDelay:    "Network delay profile:",
+	FieldBatteryPercent:  "Battery percent:",
+	FieldBatteryCharging: "Charging:",
+	ChargingYes:          "Yes",
+	ChargingNo:           "No",
+
+	EmulatorSpecsTitle: "Specs",
+
+	WizardFieldRequiredMsg: "This field is required.",
+	WizardFieldNumberMsg:   "Enter a number.",
+	WizardSearchHint:       "Type to search - esc clears the search, ↑/↓ to browse.",
+
+	EmulatorNotRunningMsg:        "This AVD is not currently running.",
+	EmulatorStartFailedNoToolMsg: "The emulator binary is not available - run 'android-toolbox emulator setup'.",
+	EmulatorBrokenMsg:            "%s can't be started: %s",
+	EmulatorAlreadyStartingFmt:   "%s is already starting - please wait for it to boot.",
+	EmulatorBootWaitingFmt:       "%s is starting - waiting for it to boot (this can take a while, especially without hardware acceleration)...",
+	EmulatorBootedFmt:            "%s is now running.",
+	EmulatorBootTimeoutFmt:       "%s hasn't come up after 90s - it may still be booting (check Log: %s), or hardware acceleration (HAXM/WHPX/KVM) may not be set up.",
+	EmulatorCrashedFmt:           "%s failed to start: %s (see Log: %s)",
+	EmulatorExitedEarlyFmt:       "%s exited before finishing boot (see Log: %s)",
+	EmulatorStoppedFmt:           "%s stopped.",
+	EmulatorDeletedFmt:           "%s deleted.",
+	EmulatorDeleteTitleFmt:       "Delete AVD %q?",
+	EmulatorDeleteYes:            "Yes, delete it",
+	EmulatorDeleteNo:             "Cancel",
+	EmulatorGPSAppliedMsg:        "GPS position applied.",
+	EmulatorNetworkAppliedMsg:    "Network profile applied.",
+	EmulatorBatteryAppliedMsg:    "Battery state applied.",
+	EmulatorSpecsAppliedMsg:      "Specs saved - restart the AVD for changes to take effect.",
+
+	EmulatorCreateTitle:         "android-toolbox - New Emulator",
+	EmulatorCreateDefaultDevice: "(avdmanager default)",
+	EmulatorCreateStepFmt:       "Step %d/%d",
+	EmulatorCreateLoadingMsg:    "Fetching device profiles and system images...",
+	EmulatorCreateCreatingMsg:   "Creating AVD...",
+	EmulatorCreateDoneFmt:       "AVD %q created.",
+	EmulatorCreateFooter:        "[enter]/[esc] back to the emulator list",
 }
 
 var uiTextDE = uiText{
@@ -670,6 +810,72 @@ var uiTextDE = uiText{
 	APKInfoCertSHA256Label:      "SHA-256:",
 	APKInfoSigningV1OnlyLabel:   "v1 (JAR-Signatur) - Zertifikatsdetails werden nicht entschlüsselt",
 	APKInfoSigningNoneLabel:     "Kein Signatur-Block gefunden (unsigniert oder unbekanntes Format)",
+
+	ToolEmulatorsLabel: "Emulatoren",
+	ToolEmulatorsDesc:  "Android Virtual Devices (AVDs) erstellen, verwalten und simulieren",
+
+	AVDBadgeFmt: "AVD: %s",
+
+	EmulatorsTitle:     "android-toolbox - Emulatoren",
+	EmulatorsFooter:    "[n] neu   [enter] starten/stoppen   [d] löschen   [e] Specs bearbeiten   [g] GPS   [w] Netzwerk   [b] Akku   [esc] zurück   [ctrl+t] Werkzeug wechseln   [q] beenden",
+	EmulatorsNone:      "Noch keine AVDs angelegt - 'n' drücken, um eines zu erstellen.",
+	EmulatorNoToolsMsg: "sdkmanager/avdmanager nicht verfügbar - 'android-toolbox emulator setup' ausführen",
+
+	FieldTarget:          "Target:",
+	FieldDevice:          "Gerät:",
+	FieldPath:            "Pfad:",
+	FieldStatusRunning:   "Läuft",
+	FieldStatusStopped:   "Gestoppt",
+	FieldStatusBroken:    "Defekt",
+	FieldName:            "Name:",
+	FieldSystemImage:     "System-Image:",
+	FieldSDCard:          "SD-Karte (MB):",
+	FieldRAM:             "RAM (MB):",
+	FieldHeap:            "Heap (MB):",
+	FieldCPUCores:        "CPU-Kerne:",
+	FieldStorage:         "Interner Speicher (MB):",
+	FieldDensity:         "LCD-Dichte (dpi):",
+	FieldLatitude:        "Breitengrad:",
+	FieldLongitude:       "Längengrad:",
+	FieldNetworkSpeed:    "Netzwerk-Geschwindigkeitsprofil:",
+	FieldNetworkDelay:    "Netzwerk-Verzögerungsprofil:",
+	FieldBatteryPercent:  "Akkustand (%):",
+	FieldBatteryCharging: "Lädt:",
+	ChargingYes:          "Ja",
+	ChargingNo:           "Nein",
+
+	EmulatorSpecsTitle: "Specs",
+
+	WizardFieldRequiredMsg: "Dieses Feld wird benötigt.",
+	WizardFieldNumberMsg:   "Eine Zahl eingeben.",
+	WizardSearchHint:       "Tippen zum Suchen - esc löscht die Suche, ↑/↓ zum Blättern.",
+
+	EmulatorNotRunningMsg:        "Dieses AVD läuft aktuell nicht.",
+	EmulatorStartFailedNoToolMsg: "Die emulator-Binary ist nicht verfügbar - 'android-toolbox emulator setup' ausführen.",
+	EmulatorBrokenMsg:            "%s kann nicht gestartet werden: %s",
+	EmulatorAlreadyStartingFmt:   "%s startet bereits - bitte warten, bis es hochgefahren ist.",
+	EmulatorBootWaitingFmt:       "%s startet - warte auf den Bootvorgang (kann dauern, besonders ohne Hardware-Beschleunigung)...",
+	EmulatorBootedFmt:            "%s läuft jetzt.",
+	EmulatorBootTimeoutFmt:       "%s ist nach 90s nicht erschienen - der Bootvorgang läuft evtl. noch (siehe Log: %s), oder Hardware-Beschleunigung (HAXM/WHPX/KVM) ist nicht eingerichtet.",
+	EmulatorCrashedFmt:           "%s konnte nicht gestartet werden: %s (siehe Log: %s)",
+	EmulatorExitedEarlyFmt:       "%s wurde vor Abschluss des Bootvorgangs beendet (siehe Log: %s)",
+	EmulatorStoppedFmt:           "%s gestoppt.",
+	EmulatorDeletedFmt:           "%s gelöscht.",
+	EmulatorDeleteTitleFmt:       "AVD %q löschen?",
+	EmulatorDeleteYes:            "Ja, löschen",
+	EmulatorDeleteNo:             "Abbrechen",
+	EmulatorGPSAppliedMsg:        "GPS-Position übernommen.",
+	EmulatorNetworkAppliedMsg:    "Netzwerkprofil übernommen.",
+	EmulatorBatteryAppliedMsg:    "Akkustatus übernommen.",
+	EmulatorSpecsAppliedMsg:      "Specs gespeichert - AVD neu starten, damit die Änderung wirkt.",
+
+	EmulatorCreateTitle:         "android-toolbox - Neuer Emulator",
+	EmulatorCreateDefaultDevice: "(avdmanager-Standard)",
+	EmulatorCreateStepFmt:       "Schritt %d/%d",
+	EmulatorCreateLoadingMsg:    "Geräteprofile und System-Images werden geladen...",
+	EmulatorCreateCreatingMsg:   "AVD wird erstellt...",
+	EmulatorCreateDoneFmt:       "AVD %q erstellt.",
+	EmulatorCreateFooter:        "[enter]/[esc] zurück zur Emulator-Liste",
 }
 
 // resolveUIText picks the UI string table for a Settings.Language() value

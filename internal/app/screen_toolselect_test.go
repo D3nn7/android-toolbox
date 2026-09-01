@@ -62,6 +62,23 @@ func TestToolSelectEnterOnAPKInfoOpensThatTool(t *testing.T) {
 	}
 }
 
+// TestToolSelectEnterOnEmulatorsOpensThatTool proves the new "Emulators"
+// entry lands on the emulator list screen, degrading gracefully (no crash)
+// even though m.avdManager is nil in this bare test Model - setupTools()
+// never ran, mirroring how a real user reaches this screen only after it
+// has.
+func TestToolSelectEnterOnEmulatorsOpensThatTool(t *testing.T) {
+	m := newTestToolSelectModel(t)
+	m.toolSelect.cursor = 2 // Emulators (see toolOrder)
+
+	updated, _ := m.updateToolSelect(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+
+	if m.current != screenEmulatorList {
+		t.Fatalf("expected enter on Emulators to switch to screenEmulatorList, current = %v", m.current)
+	}
+}
+
 // TestToolSelectEnterOnDevicesEntersDeviceSelect proves the first entry
 // still leads to the existing adb-based flow, unchanged.
 func TestToolSelectEnterOnDevicesEntersDeviceSelect(t *testing.T) {
@@ -89,6 +106,8 @@ func TestCanSwitchTool(t *testing.T) {
 		{screenDashboard, true},
 		{screenAPKInfo, true},
 		{screenSettings, true},
+		{screenEmulatorList, true},
+		{screenEmulatorCreate, true},
 	}
 	for _, c := range cases {
 		if got := canSwitchTool(c.screen); got != c.want {

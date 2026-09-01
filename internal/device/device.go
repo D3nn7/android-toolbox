@@ -20,6 +20,12 @@ type Info struct {
 	Resolution     string
 	IPAddress      string
 	Battery        adb.Battery
+
+	// IsEmulator/AVDName let the TUI show richer, emulator-specific info
+	// (specs, simulation controls) for emulator-* serials without needing
+	// its own serial-format check wherever Info is displayed.
+	IsEmulator bool
+	AVDName    string
 }
 
 var ipRegexp = regexp.MustCompile(`inet\s+(\d+\.\d+\.\d+\.\d+)`)
@@ -43,6 +49,11 @@ func Collect(ctx context.Context, client *adb.Client, serial string) (Info, erro
 
 	if battery, err := client.DumpsysBattery(ctx, serial); err == nil {
 		info.Battery = battery
+	}
+
+	info.IsEmulator = adb.IsEmulatorSerial(serial)
+	if info.IsEmulator {
+		info.AVDName, _ = client.EmuAVDName(ctx, serial)
 	}
 
 	return info, nil

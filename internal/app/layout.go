@@ -209,6 +209,14 @@ func (m Model) renderHeader() string {
 	badges := []string{
 		m.styles.Badge.Render(fmt.Sprintf("%s (%s)", orDash(info.Model), m.dashboard.serial)),
 	}
+	if info.IsEmulator {
+		// info.Model for an emulator is usually a generic build name (e.g.
+		// "sdk_gphone64_x86_64"), not the AVD it's actually running - shown
+		// as its own badge so it's visible without switching to the
+		// Emulators tool, using BadgeGood (not the neutral Badge style) so
+		// it reads as "this is an AVD, here's which one" at a glance.
+		badges = append(badges, m.styles.BadgeGood.Render(fmt.Sprintf(m.text.AVDBadgeFmt, orDash(info.AVDName))))
+	}
 	if info.AndroidVersion != "" {
 		androidLabel := fmt.Sprintf("Android %s", info.AndroidVersion)
 		if info.SDK != "" {

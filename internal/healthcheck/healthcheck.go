@@ -5,6 +5,7 @@ package healthcheck
 
 import (
 	"context"
+	"fmt"
 	"os/exec"
 
 	"android-toolbox/internal/actions"
@@ -55,6 +56,8 @@ func Run(ctx context.Context, paths config.Paths, settings config.Settings) Repo
 	report.Results = append(report.Results, checkADB(paths))
 	report.Results = append(report.Results, checkScrcpy(paths))
 	report.Results = append(report.Results, checkAIProvider(settings))
+	report.Results = append(report.Results, checkJava())
+	report.Results = append(report.Results, checkAvdTools(paths))
 
 	return report
 }
@@ -169,6 +172,52 @@ func checkScrcpy(paths config.Paths) Result {
 		}
 	}
 	return Result{Name: "scrcpy", Severity: OK, Detail: tool.Path + " (" + tool.Source + ")"}
+}
+
+func checkJava() Result {
+	tool, err := toolsmanager.ResolveJava()
+	if err != nil {
+		return Result{
+			Name:        "Java (for emulator manager)",
+			Severity:    Warn,
+			Detail:      err.Error(),
+			Remediation: "Install a JRE/JDK (11+) if you want to create/manage emulators",
+		}
+	}
+	if err := exec.Command(tool.Path, "-version").Run(); err != nil {
+		return Result{
+			Name:        "Java (for emulator manager)",
+			Severity:    Warn,
+			Detail:      "java -version failed: " + err.Error(),
+			Remediation: "Check your Java installation",
+		}
+	}
+	return Result{Name: "Java (for emulator manager)", Severity: OK, Detail: tool.Path}
+}
+
+func checkAvdTools(paths config.Paths) Result {
+	mgr := toolsmanager.New(paths.ToolsDir)
+	sdkManager, sdkErr := mgr.ResolveSdkManager()
+	avdManager, avdErr := mgr.ResolveAvdManager()
+	if sdkErr != nil || avdErr != nil {
+		detail := "sdkmanager/avdmanager not found"
+		if sdkErr != nil {
+			detail = sdkErr.Error()
+		} else if avdErr != nil {
+			detail = avdErr.Error()
+		}
+		return Result{
+			Name:        "Android SDK tools (emulator manager)",
+			Severity:    Warn,
+			Detail:      detail,
+			Remediation: "Run 'android-toolbox emulator setup'",
+		}
+	}
+	return Result{
+		Name:     "Android SDK tools (emulator manager)",
+		Severity: OK,
+		Detail:   fmt.Sprintf("sdkmanager: %s (%s), avdmanager: %s (%s)", sdkManager.Path, sdkManager.Source, avdManager.Path, avdManager.Source),
+	}
 }
 
 func checkAIProvider(settings config.Settings) Result {

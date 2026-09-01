@@ -21,6 +21,33 @@ var httpClient = &http.Client{Timeout: 5 * time.Minute}
 // downloadToFile streams url into a new temp file inside dir and returns its
 // path. The caller is responsible for removing it once done.
 func downloadToFile(ctx context.Context, url, dir string) (string, error) {
+	return downloadToFileTracked(ctx, url, dir, nil)
+}
+
+// progressWriter counts bytes written through it and reports (read, total)
+// to onProgress after every chunk - total is 0 if the server never sent a
+// Content-Length, in which case callers should treat the download as
+// indeterminate rather than computing a bogus percentage.
+type progressWriter struct {
+	io.Writer
+	read, total int64
+	onProgress  func(read, total int64)
+}
+
+func (w *progressWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	w.read += int64(n)
+	if w.onProgress != nil {
+		w.onProgress(w.read, w.total)
+	}
+	return n, err
+}
+
+// downloadToFileTracked is downloadToFile with an optional byte-progress
+// callback, invoked as data streams in - used to drive a real (non-
+// decorative) percentage progress bar for large downloads. onProgress may be
+// nil, in which case this behaves exactly like downloadToFile.
+func downloadToFileTracked(ctx context.Context, url, dir string, onProgress func(read, total int64)) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
@@ -43,7 +70,11 @@ func downloadToFile(ctx context.Context, url, dir string) (string, error) {
 	}
 	defer tmp.Close()
 
-	if _, err := io.Copy(tmp, resp.Body); err != nil {
+	dst := io.Writer(tmp)
+	if onProgress != nil {
+		dst = &progressWriter{Writer: tmp, total: resp.ContentLength, onProgress: onProgress}
+	}
+	if _, err := io.Copy(dst, resp.Body); err != nil {
 		os.Remove(tmp.Name())
 		return "", fmt.Errorf("download %s failed: %w", url, err)
 	}

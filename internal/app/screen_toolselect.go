@@ -15,26 +15,35 @@ type toolKind int
 const (
 	toolDevices toolKind = iota
 	toolAPKInfo
+	toolEmulators
 )
 
-var toolOrder = [...]toolKind{toolDevices, toolAPKInfo}
+var toolOrder = [...]toolKind{toolDevices, toolAPKInfo, toolEmulators}
 
 type toolSelectScreen struct {
 	cursor int
 }
 
 func (m Model) toolLabel(k toolKind) string {
-	if k == toolAPKInfo {
+	switch k {
+	case toolAPKInfo:
 		return m.text.ToolAPKInfoLabel
+	case toolEmulators:
+		return m.text.ToolEmulatorsLabel
+	default:
+		return m.text.ToolDevicesLabel
 	}
-	return m.text.ToolDevicesLabel
 }
 
 func (m Model) toolDescription(k toolKind) string {
-	if k == toolAPKInfo {
+	switch k {
+	case toolAPKInfo:
 		return m.text.ToolAPKInfoDesc
+	case toolEmulators:
+		return m.text.ToolEmulatorsDesc
+	default:
+		return m.text.ToolDevicesDesc
 	}
-	return m.text.ToolDevicesDesc
 }
 
 // canSwitchTool reports whether ctrl+t should act on the given screen -
@@ -62,12 +71,16 @@ func (m Model) enterToolSelect() (Model, tea.Cmd) {
 // enterTool switches into whichever tool was picked (or switched to via
 // ctrl+t).
 func (m Model) enterTool(tool toolKind) (Model, tea.Cmd) {
-	if tool == toolAPKInfo {
+	switch tool {
+	case toolAPKInfo:
 		m.apkInfo = newAPKInfoScreen(m)
 		m.current = screenAPKInfo
 		return m, m.apkInfo.picker.Init()
+	case toolEmulators:
+		return m.enterEmulatorList()
+	default:
+		return m.enterDeviceSelect()
 	}
-	return m.enterDeviceSelect()
 }
 
 func (m Model) updateToolSelect(msg tea.Msg) (tea.Model, tea.Cmd) {

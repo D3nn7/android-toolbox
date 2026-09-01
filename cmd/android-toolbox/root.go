@@ -52,6 +52,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newDangerousResetCmd())
 	root.AddCommand(newSelfUpdateCmd())
 	root.AddCommand(newAPKInfoCmd())
+	root.AddCommand(newEmulatorCmd())
 
 	return root
 }

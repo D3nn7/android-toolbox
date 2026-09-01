@@ -120,7 +120,7 @@ func TestCheckAIProviderNotOnPath(t *testing.T) {
 	}
 }
 
-func TestRunProducesFiveResults(t *testing.T) {
+func TestRunProducesSevenResults(t *testing.T) {
 	dir := t.TempDir()
 	emptyPathDir := t.TempDir()
 	t.Setenv("PATH", emptyPathDir)
@@ -131,7 +131,7 @@ func TestRunProducesFiveResults(t *testing.T) {
 		ToolsDir:    filepath.Join(dir, "tools"),
 	}
 	report := Run(context.Background(), paths, config.Default())
-	if len(report.Results) != 5 {
-		t.Fatalf("expected 5 results (config dir, actions, adb, scrcpy, AI provider), got %d", len(report.Results))
+	if len(report.Results) != 7 {
+		t.Fatalf("expected 7 results (config dir, actions, adb, scrcpy, AI provider, java, avd tools), got %d", len(report.Results))
 	}
 }

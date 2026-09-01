@@ -9,11 +9,12 @@ import (
 // Settings holds user-configurable application behaviour. It is persisted as
 // YAML so it stays easy to hand-edit.
 type Settings struct {
-	AI      AISettings      `yaml:"ai"`
-	Devices DeviceSettings  `yaml:"devices"`
-	Scrcpy  ScrcpySettings  `yaml:"scrcpy"`
-	Install InstallSettings `yaml:"install"`
-	UI      UISettings      `yaml:"ui"`
+	AI       AISettings       `yaml:"ai"`
+	Devices  DeviceSettings   `yaml:"devices"`
+	Scrcpy   ScrcpySettings   `yaml:"scrcpy"`
+	Install  InstallSettings  `yaml:"install"`
+	UI       UISettings       `yaml:"ui"`
+	Emulator EmulatorSettings `yaml:"emulator"`
 }
 
 type UISettings struct {
@@ -74,6 +75,21 @@ type InstallSettings struct {
 	AliasName string `yaml:"alias_name"`
 }
 
+// EmulatorSettings configures the emulator manager (internal/avd,
+// internal/app's Emulators tool).
+type EmulatorSettings struct {
+	// Windowed selects whether "android-toolbox emulator start"/the TUI's
+	// start action launches with a visible emulator window (true, the
+	// default) or headless (-no-window) - see avd.Launcher.Launch.
+	Windowed bool `yaml:"windowed"`
+	// DefaultDevice/DefaultSystemImage pre-select the create wizard's
+	// hardware profile / system image fields; both may be "" (no default).
+	DefaultDevice      string `yaml:"default_device"`
+	DefaultSystemImage string `yaml:"default_system_image"`
+	// ExtraArgs are appended to every emulator launch, after -avd/-no-window.
+	ExtraArgs []string `yaml:"extra_args"`
+}
+
 // Default returns the settings shipped on first run.
 func Default() Settings {
 	return Settings{
@@ -98,6 +114,10 @@ func Default() Settings {
 			ShowStartupAnimation: true,
 			ShowHealthcheck:      true,
 			AutoCheckToolUpdates: true,
+		},
+		Emulator: EmulatorSettings{
+			Windowed:  true,
+			ExtraArgs: []string{},
 		},
 	}
 }

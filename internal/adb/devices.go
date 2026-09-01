@@ -2,6 +2,7 @@ package adb
 
 import (
 	"context"
+	"regexp"
 	"strings"
 )
 
@@ -18,6 +19,17 @@ type Device struct {
 // Connected reports whether the device is in a usable state.
 func (d Device) Connected() bool {
 	return d.State == "device"
+}
+
+// emulatorSerialRe matches adb's serial naming convention for emulator
+// instances ("emulator-5554", ...) as opposed to a physical device's
+// hardware serial number or a network address.
+var emulatorSerialRe = regexp.MustCompile(`^emulator-\d+$`)
+
+// IsEmulatorSerial reports whether serial looks like a running emulator's
+// adb serial rather than a physical device's.
+func IsEmulatorSerial(serial string) bool {
+	return emulatorSerialRe.MatchString(serial)
 }
 
 // ListDevices runs "adb devices -l" and parses the result.

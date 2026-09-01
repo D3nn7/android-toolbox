@@ -18,6 +18,7 @@ import (
 	"android-toolbox/internal/actions"
 	"android-toolbox/internal/adb"
 	"android-toolbox/internal/ai"
+	"android-toolbox/internal/avd"
 	"android-toolbox/internal/config"
 	"android-toolbox/internal/logging"
 	"android-toolbox/internal/scrcpy"
@@ -41,6 +42,8 @@ const (
 	screenSettings
 	screenActionEdit
 	screenAPKInfo
+	screenEmulatorList
+	screenEmulatorCreate
 )
 
 // Model is the root Bubbletea model. It owns everything shared across
@@ -91,6 +94,21 @@ type Model struct {
 	executor       *actions.Executor
 	actionSet      actions.ActionSet
 
+	// avdManager/avdLauncher are nil (rather than erroring at startup) if
+	// sdkmanager/avdmanager/the emulator binary aren't resolved yet - same
+	// "degrade gracefully, error only when actually used" convention as
+	// scrcpyLauncher above, since this whole feature is optional.
+	avdManager  *avd.Manager
+	avdLauncher *avd.Launcher
+	// emulatorRunSeq is runnerSeq's counterpart for the emulator create
+	// wizard's progress runner (see screen_progress.go).
+	emulatorRunSeq int
+	// startingEmulators tracks AVDs currently being waited on to finish
+	// booting - kept here rather than on emulatorListScreen so it survives
+	// navigating away and back (see startingEmulator's doc comment for why
+	// that matters).
+	startingEmulators map[string]startingEmulator
+
 	aiProvider ai.Provider
 	aiErr      error
 
@@ -122,6 +140,8 @@ type Model struct {
 	settingsScreen settingsScreen
 	actionEdit     actionEditScreen
 	apkInfo        apkInfoScreen
+	emulatorList   emulatorListScreen
+	emulatorCreate emulatorCreateScreen
 }
 
 // New builds the initial Model. Everything that can fail (resolving tool
@@ -161,6 +181,7 @@ func New(ctx context.Context, paths config.Paths, settings config.Settings, stat
 	m.deviceSelect.list = list.New(nil, newWrappingDelegate(2), 0, 0)
 	m.dashboard.actionList = list.New(nil, newWrappingDelegate(3), 0, 0)
 	m.recover.list = list.New(nil, newWrappingDelegate(2), 0, 0)
+	m.emulatorList.list = list.New(nil, newWrappingDelegate(2), 0, 0)
 	m.runner.viewport = viewport.New(0, 0)
 
 	return m
@@ -193,6 +214,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// render as empty/garbled regardless of the real terminal size.
 		m.deviceSelect.list.SetSize(msg.Width, deviceListHeight(msg.Height))
 		m.recover.list.SetSize(msg.Width, deviceListHeight(msg.Height))
+		// The Emulators screen is a real two-pane cluster (see
+		// viewEmulatorList/renderTwoPane), unlike deviceSelect/recover's
+		// full-width single list - its list needs the same left-pane sizing
+		// the dashboard's action list gets, not the full terminal width.
+		{
+			emuLeftW, _ := paneWidths(msg.Width)
+			emuLeftContentW, emuContentH := paneContentSize(emuLeftW, bodyHeight(msg.Height))
+			m.emulatorList.list.SetSize(emuLeftContentW, emuContentH)
+		}
 		m.splash.progress.Width = splashProgressBarWidth(msg.Width)
 		// filepicker.Model sizes itself from tea.WindowSizeMsg via its own
 		// AutoHeight handling - forwarded unconditionally (like the lists
@@ -289,6 +319,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.latestKnownADB = msg.adbLatest
 		m.latestKnownScrcpy = msg.scrcpyLatest
 		return m, nil
+
+	case emulatorBootPollMsg:
+		// Handled centrally (like deviceTickMsg above) rather than only
+		// inside updateEmulatorList: an in-flight AVD boot must keep being
+		// tracked (and, above all, must not be forgotten - see
+		// Model.startingEmulators' doc comment) even if the user switches
+		// tools or opens the create wizard while it's still starting.
+		return m.updateEmulatorBootPoll(msg)
+
+	case emulatorBootCheckMsg:
+		return m.updateEmulatorBootCheck(msg)
+
+	case emulatorExitedMsg:
+		return m.updateEmulatorExited(msg)
 	}
 
 	switch m.current {
@@ -318,6 +362,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateActionEdit(msg)
 	case screenAPKInfo:
 		return m.updateAPKInfo(msg)
+	case screenEmulatorList:
+		return m.updateEmulatorList(msg)
+	case screenEmulatorCreate:
+		return m.updateEmulatorCreate(msg)
 	}
 	return m, nil
 }
@@ -345,6 +393,10 @@ func (m Model) View() string {
 		out = m.viewActionEdit()
 	case screenAPKInfo:
 		out = m.viewAPKInfo()
+	case screenEmulatorList:
+		out = m.viewEmulatorList()
+	case screenEmulatorCreate:
+		out = m.viewEmulatorCreate()
 	}
 	// Final safety net: no matter which screen rendered (or what content it
 	// happened to contain - a long device path, a narrow terminal, ...), the
@@ -404,6 +456,24 @@ func (m *Model) setupTools() error {
 
 	if scrcpyTool, err := mgr.ResolveScrcpy(); err == nil {
 		m.scrcpyLauncher = scrcpy.New(scrcpyTool.Path, m.settings.Scrcpy.DefaultArgs, m.paths.LogsDir)
+	}
+
+	// Best-effort, same reasoning as scrcpy above: an unresolved tool here
+	// just means the emulator manager reports a clear per-action error
+	// ("run 'android-toolbox emulator setup'") instead of the app failing to
+	// start - this whole feature is optional.
+	avdManagerTool, _ := mgr.ResolveAvdManager()
+	sdkManagerTool, _ := mgr.ResolveSdkManager()
+	emulatorTool, _ := mgr.ResolveEmulator()
+	m.avdManager = avd.New(avdManagerTool.Path, sdkManagerTool.Path, emulatorTool.Path, mgr.SdkRoot())
+	if emulatorTool.Path != "" {
+		// Best-effort: without a platform-tools subdirectory under
+		// SdkRoot(), the emulator binary refuses to start at all (see
+		// EnsureEmulatorPlatformTools's doc comment) - a failure here
+		// (e.g. adb not fetched yet) surfaces later as a clear per-launch
+		// error instead of blocking startup.
+		_ = mgr.EnsureEmulatorPlatformTools(m.adbTool.Path)
+		m.avdLauncher = avd.NewLauncher(emulatorTool.Path, m.paths.LogsDir, mgr.SdkRoot())
 	}
 
 	m.executor = actions.NewExecutor(m.adbTool.Path, m.scrcpyLauncher)
