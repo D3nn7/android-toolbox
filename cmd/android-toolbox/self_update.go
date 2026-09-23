@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
 
 	"github.com/spf13/cobra"
@@ -64,6 +65,17 @@ func newSelfUpdateCmd() *cobra.Command {
 			exePath, err := os.Executable()
 			if err != nil {
 				return fmt.Errorf("could not determine own executable path: %w", err)
+			}
+			// `install` makes android-toolbox and its alias (atbx) two
+			// symlinks pointing at the same real binary (internal/install's
+			// Unix path). Resolving through the symlink here, rather than
+			// updating whichever name was used to invoke this command,
+			// means Apply always replaces that one shared file - so both
+			// names pick up the new version, instead of only the one that
+			// happened to launch self-update getting detached from the
+			// other into its own stale copy.
+			if resolved, err := filepath.EvalSymlinks(exePath); err == nil {
+				exePath = resolved
 			}
 
 			progress := func(msg string) { fmt.Fprintln(out, msg) }
