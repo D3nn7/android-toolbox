@@ -13,3 +13,12 @@ type Result struct {
 	// PATH registration.
 	Note string
 }
+
+// UninstallResult describes what Uninstall actually did, for display to the user.
+type UninstallResult struct {
+	InstallDir   string
+	RemovedFiles []string
+	// Note carries any follow-up the user needs to do manually, mirroring
+	// Result.Note.
+	Note string
+}

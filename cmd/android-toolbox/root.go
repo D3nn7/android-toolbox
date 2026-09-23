@@ -49,6 +49,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newBackupCmd())
 	root.AddCommand(newRecoverCmd())
 	root.AddCommand(newInstallCmd())
+	root.AddCommand(newUninstallCmd())
 	root.AddCommand(newDangerousResetCmd())
 	root.AddCommand(newSelfUpdateCmd())
 	root.AddCommand(newAPKInfoCmd())

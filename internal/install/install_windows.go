@@ -53,6 +53,73 @@ func Install(exePath, appName, aliasName string) (Result, error) {
 	}, nil
 }
 
+// Uninstall reverses Install: it removes the appName.exe/aliasName.exe copies
+// (and the now-empty install directory) from %LOCALAPPDATA%\Programs\<appName>,
+// and removes that directory from the current user's PATH registry value if
+// Install put it there.
+func Uninstall(appName, aliasName string) (UninstallResult, error) {
+	localAppData := os.Getenv("LOCALAPPDATA")
+	if localAppData == "" {
+		return UninstallResult{}, fmt.Errorf("LOCALAPPDATA is not set")
+	}
+
+	installDir := filepath.Join(localAppData, "Programs", appName)
+
+	var removed []string
+	for _, dest := range []string{filepath.Join(installDir, appName+".exe"), filepath.Join(installDir, aliasName+".exe")} {
+		if err := os.Remove(dest); err == nil {
+			removed = append(removed, dest)
+		} else if !os.IsNotExist(err) {
+			return UninstallResult{}, fmt.Errorf("could not remove %s: %w", dest, err)
+		}
+	}
+	_ = os.Remove(installDir) // best-effort: only succeeds once it's empty
+
+	note, err := removeFromUserPath(installDir)
+	if err != nil {
+		return UninstallResult{}, fmt.Errorf("could not update PATH: %w", err)
+	}
+
+	return UninstallResult{InstallDir: installDir, RemovedFiles: removed, Note: note}, nil
+}
+
+// removeFromUserPath is addToUserPath in reverse: it drops dir from
+// HKCU\Environment\Path if present, leaving the rest of the value untouched.
+func removeFromUserPath(dir string) (string, error) {
+	k, err := registry.OpenKey(registry.CURRENT_USER, `Environment`, registry.QUERY_VALUE|registry.SET_VALUE)
+	if err != nil {
+		return "", err
+	}
+	defer k.Close()
+
+	existing, _, err := k.GetStringValue("Path")
+	if err != nil {
+		if err == registry.ErrNotExist {
+			return "", nil
+		}
+		return "", err
+	}
+
+	var kept []string
+	found := false
+	for _, part := range strings.Split(existing, ";") {
+		if strings.EqualFold(strings.TrimSpace(part), dir) {
+			found = true
+			continue
+		}
+		kept = append(kept, part)
+	}
+	if !found {
+		return "", nil
+	}
+
+	if err := k.SetStringValue("Path", strings.Join(kept, ";")); err != nil {
+		return "", err
+	}
+	broadcastEnvironmentChange()
+	return "Removed from PATH. Open a new terminal for the change to take effect.", nil
+}
+
 func copyFile(src, dst string) error {
 	data, err := os.ReadFile(src)
 	if err != nil {

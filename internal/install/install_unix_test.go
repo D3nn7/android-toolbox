@@ -167,6 +167,71 @@ func TestShellRCFilePicksVariantByShell(t *testing.T) {
 	}
 }
 
+func TestUninstallRemovesSymlinksAndShellRCBlock(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir()) // deliberately does not include installDir
+	t.Setenv("SHELL", "/bin/zsh")
+
+	exeDir := t.TempDir()
+	exePath := filepath.Join(exeDir, "android-toolbox")
+	if err := os.WriteFile(exePath, []byte("fake binary"), 0o755); err != nil {
+		t.Fatalf("WriteFile returned an error: %v", err)
+	}
+
+	if _, err := Install(exePath, "android-toolbox", "atbx"); err != nil {
+		t.Fatalf("Install returned an error: %v", err)
+	}
+
+	installDir := filepath.Join(home, ".local", "bin")
+	rcFile := filepath.Join(home, ".zshrc")
+	if data, err := os.ReadFile(rcFile); err != nil || !strings.Contains(string(data), installDir) {
+		t.Fatalf("expected Install to have added %s to %s first", installDir, rcFile)
+	}
+
+	res, err := Uninstall("android-toolbox", "atbx")
+	if err != nil {
+		t.Fatalf("Uninstall returned an error: %v", err)
+	}
+	if len(res.RemovedFiles) != 2 {
+		t.Errorf("expected 2 removed files, got %v", res.RemovedFiles)
+	}
+	if res.Note == "" || !strings.Contains(res.Note, rcFile) {
+		t.Errorf("expected Note to mention %s, got %q", rcFile, res.Note)
+	}
+
+	for _, name := range []string{"android-toolbox", "atbx"} {
+		if _, err := os.Lstat(filepath.Join(installDir, name)); !os.IsNotExist(err) {
+			t.Errorf("expected %s to have been removed, stat err = %v", name, err)
+		}
+	}
+
+	data, err := os.ReadFile(rcFile)
+	if err != nil {
+		t.Fatalf("expected %s to still exist: %v", rcFile, err)
+	}
+	if strings.Contains(string(data), installDir) {
+		t.Errorf("expected %s to no longer reference %s, got:\n%s", rcFile, installDir, data)
+	}
+}
+
+func TestUninstallIsNoOpWhenNothingWasInstalled(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/zsh")
+
+	res, err := Uninstall("android-toolbox", "atbx")
+	if err != nil {
+		t.Fatalf("Uninstall returned an error: %v", err)
+	}
+	if len(res.RemovedFiles) != 0 {
+		t.Errorf("expected no removed files, got %v", res.RemovedFiles)
+	}
+	if res.Note != "" {
+		t.Errorf("expected no note when there was nothing to remove, got %q", res.Note)
+	}
+}
+
 func TestInstallOverwritesExistingSymlink(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

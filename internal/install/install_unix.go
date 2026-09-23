@@ -92,6 +92,60 @@ func persistPathViaShellRC(home, installDir string) string {
 	return fmt.Sprintf("Added %s to PATH in %s. Open a new terminal for the change to take effect.", installDir, rcFile)
 }
 
+// Uninstall reverses Install: it removes the appName/aliasName symlinks from
+// ~/.local/bin and strips the PATH block Install may have appended to the
+// shell rc file, leaving both untouched if that block isn't there (e.g. the
+// user already had installDir on PATH, so Install never wrote one).
+func Uninstall(appName, aliasName string) (UninstallResult, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return UninstallResult{}, fmt.Errorf("could not determine home directory: %w", err)
+	}
+
+	installDir := filepath.Join(home, ".local", "bin")
+
+	var removed []string
+	for _, dest := range []string{filepath.Join(installDir, appName), filepath.Join(installDir, aliasName)} {
+		if err := os.Remove(dest); err == nil {
+			removed = append(removed, dest)
+		} else if !os.IsNotExist(err) {
+			return UninstallResult{}, fmt.Errorf("could not remove %s: %w", dest, err)
+		}
+	}
+
+	return UninstallResult{
+		InstallDir:   installDir,
+		RemovedFiles: removed,
+		Note:         removePathFromShellRC(home, installDir),
+	}, nil
+}
+
+// removePathFromShellRC strips the exact block persistPathViaShellRC would
+// have appended for installDir, if present. Returns "" if there was nothing
+// to remove (rc file undetermined, missing, or never contained the block).
+func removePathFromShellRC(home, installDir string) string {
+	rcFile, exportLine := shellRCFile(home, installDir)
+	if rcFile == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(rcFile)
+	if err != nil {
+		return ""
+	}
+
+	block := fmt.Sprintf("\n# Added by android-toolbox install\n%s\n", exportLine)
+	if !strings.Contains(string(data), block) {
+		return ""
+	}
+
+	updated := strings.Replace(string(data), block, "", 1)
+	if err := os.WriteFile(rcFile, []byte(updated), 0o644); err != nil {
+		return fmt.Sprintf("Could not remove the PATH entry from %s; remove it manually.", rcFile)
+	}
+	return fmt.Sprintf("Removed the PATH entry from %s.", rcFile)
+}
+
 // shellRCFile picks which rc file to append a PATH change to, based on the
 // user's login shell ($SHELL), and returns the matching export line for that
 // shell's syntax. macOS defaults to zsh (since Catalina) and runs bash as a
